@@ -7,8 +7,6 @@ from datetime import datetime, timedelta
 from textblob import TextBlob
 from gnews import GNews
 
-
-
 def calculate_technical_indicators(df):
     """Calculate various technical indicators"""
     try:
@@ -652,7 +650,8 @@ def analyze_stock(ticker):
         
         # Download data with more history
         print("Downloading data...")
-        df = yf.download(ticker, period="1y", interval="1d")
+
+        df = yf.download(ticker, period="1y", interval="1d")       
         if df.empty:
             print(f"Error: No data found for {ticker}")
             return None
