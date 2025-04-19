@@ -1222,11 +1222,35 @@ def main():
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # Analysis Summary
                 st.markdown("<h2 class='section-title'>Analysis Summary</h2>", unsafe_allow_html=True)
+                st.markdown("""
+                <style>
+                .summary-card {
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                }
+                .summary-card ul {
+                    list-style-type: disc;
+                    margin-left: 20px;
+                    padding: 10px 0;
+                }
+                .summary-card li {
+                    margin: 8px 0;
+                    font-size: 16px;
+                    line-height: 1.5;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                # Split the summary into lines and display as a list
+                summary_lines = result['analysis_summary'].split('\n')
                 st.markdown(f"""
                 <div class="summary-card">
-                    <p>{result['analysis_summary']}</p>
+                    <ul>
+                        {''.join(f"<li>{line.strip()}</li>" for line in summary_lines if line.strip())}
+                    </ul>
                 </div>
                 """, unsafe_allow_html=True)
             
