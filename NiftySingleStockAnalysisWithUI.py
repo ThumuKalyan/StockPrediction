@@ -970,7 +970,7 @@ def main():
     st.set_page_config(
         page_title="Stock Analysis Dashboard",
         layout="wide",
-        initial_sidebar_state="expanded"
+        initial_sidebar_state="expanded"        
     )
   
      # Get the current path from URL
