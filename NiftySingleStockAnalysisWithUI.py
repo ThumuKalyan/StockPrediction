@@ -1016,6 +1016,13 @@ def main():
         
         st.title("Stock Analysis Dashboard")
         st.write("Welcome to the dashboard!")
+        # Add footer with copyright
+        current_year = datetime.now().year
+        st.markdown(f"""
+        <div class="footer">
+            © {current_year} Kalyan Thumu. All rights reserved.
+        </div>
+        """, unsafe_allow_html=True)
         # Add disclaimer text
         st.markdown("""
         <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;'>
