@@ -1002,9 +1002,8 @@ def main():
                 background-color: white;
             }
         </style>
-        """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)       
         
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
         st.title("Login")
         st.write("Please enter your credentials to access the dashboard.")
         check_password()
@@ -1346,6 +1345,9 @@ def main():
                 # Add custom CSS for styling
     st.markdown("""
     <style>
+    .stAppToolbar {
+                display: none;
+    }
     .stTabs [data-baseweb="tab-list"] {
         display: flex;
         justify-content: center;
