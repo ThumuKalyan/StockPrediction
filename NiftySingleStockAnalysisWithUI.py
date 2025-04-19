@@ -7,6 +7,45 @@ from datetime import datetime, timedelta
 from textblob import TextBlob
 from gnews import GNews
 
+# Define your users
+USERS = {
+    "kalyan": "Kalyan@2025@",
+    "kishore": "Kishore$2025$",
+    "chaitu": "Chaitu@2025$",
+    "somy": "Somy@2025@",
+    "guest": "Password!2025#"
+}
+
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        entered_username = st.session_state["username"]
+        entered_password = st.session_state["password"]
+        
+        if entered_username in USERS and USERS[entered_username] == entered_password:
+            st.session_state["password_correct"] = True
+            st.session_state["authenticated"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+            st.error("❌ Invalid username or password")
+
+    if "authenticated" not in st.session_state:
+        # First run, show login form
+        st.text_input("Username", key="username", placeholder="Enter your username")
+        st.text_input("Password", type="password", key="password", placeholder="Enter your password")
+        st.button("Login", on_click=password_entered)
+        return "login"
+    elif not st.session_state["password_correct"]:
+        # Password not correct, show login form with error
+        st.text_input("Username", key="username", placeholder="Enter your username")
+        st.text_input("Password", type="password", key="password", placeholder="Enter your password")
+        st.button("Login", on_click=password_entered)
+        return "login"
+    else:
+        # Password correct
+        return "dashboard"
+
 def calculate_technical_indicators(df):
     """Calculate various technical indicators"""
     try:
@@ -933,153 +972,65 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+  
+     # Get the current path from URL
+    path = st.query_params.get("path", ["login"])[0]
     
-    # Add custom CSS for styling
-    st.markdown("""
-    <style>
-    .stTabs [data-baseweb="tab-list"] {
-        display: flex;
-        justify-content: center;
-        gap: 2rem;
-        margin-bottom: 2rem;
-    }
+    # Check if user is authenticated
+    authenticated = st.session_state.get("authenticated", False)
     
-    .stTabs [data-baseweb="tab"] {
-        font-size: 1.2rem;
-        font-weight: bold;
-        padding: 1rem 2rem;
-        border-radius: 1rem;
-        background-color: #f0f2f6;
-        transition: all 0.3s ease;
-    }
+    # Force login if not authenticated
+    if not authenticated:
+        # Hide sidebar for login page
+        st.markdown("""
+            <style>
+                section[data-testid="stSidebar"] {
+                    display: none;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Add login page styling
+        st.markdown("""
+        <style>
+            .login-container {
+                max-width: 400px;
+                margin: 0 auto;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                background-color: white;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.title("Login")
+        st.write("Please enter your credentials to access the dashboard.")
+        check_password()
+        st.markdown('</div>', unsafe_allow_html=True)       
     
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: #e0e2e6;
-        transform: translateY(-2px);
-    }
-    
-    .stTabs [data-baseweb="tab"]:active {
-        background-color: #1e90ff;
-        color: white;
-    }
-    
-    .metric-card {
-        background: linear-gradient(135deg, #f0f2f6 0%, #e0e2e6 100%);
-        padding: 1.5rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin: 1rem;
-        transition: transform 0.3s ease;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-5px);
-    }
-    
-    .positive {
-        color: #22c55e;
-    }
-    
-    .negative {
-        color: #ef4444;
-    }
-    
-    .neutral {
-        color: #6b7280;
-    }
-    
-    .chart-container {
-        background: white;
-        padding: 1rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .condition-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 1rem;
-        margin: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        transition: all 0.3s ease;
-    }
-    
-    .condition-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    .pattern-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 1rem;
-        margin: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    
-    .news-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 1rem;
-        margin: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    
-    .strength-meter {
-        height: 10px;
-        border-radius: 5px;
-        background: #e5e7eb;
-        overflow: hidden;
-    }
-    
-    .strength-meter-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #1e90ff 0%, #22c55e 100%);
-        transition: width 0.5s ease;
-    }
-    
-    .recommendation-box {
-        background: linear-gradient(135deg, #1e90ff 0%, #22c55e 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 1rem;
-        text-align: center;
-        font-weight: bold;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-    }
-    
-    .trend-arrow {
-        font-size: 1.2rem;
-        margin-left: 0.5rem;
-    }
-    
-    .bullish {
-        color: #22c55e;
-    }
-    
-    .bearish {
-        color: #ef4444;
-    }
-    
-    .summary-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 1rem;
-        margin: 1rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .section-title {
-        font-size: 1.5rem;
-        font-weight: bold;
-        margin-bottom: 1rem;
-        color: #1e90ff;
-    }
-    
-    </style>
-    """, unsafe_allow_html=True)
-
-    # Add buttons for scanning and backtesting
+            
+    else:  # dashboard page
+        # Your sidebar code here       
+        
+        st.title("Stock Analysis Dashboard")
+        st.write("Welcome to the dashboard!")
+        # Add disclaimer text
+        st.markdown("""
+        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;'>
+            <strong>Disclaimer:</strong>
+            <ul style='margin-top: 10px;'>
+                <li>This tool uses technical indicators and price action patterns to generate predictions.</li>
+                <li>Please understand that these methods are based on probability, not certainty.</li>
+                <li>There is no guarantee that the predictions will be accurate.</li>
+                <li>Financial risk is involved in all trading activities.</li>
+                <li>I am not a SEBI-registered advisor, and this is not financial advice.</li>
+                <li>Always do your own research or consult a certified financial advisor before making any investment decisions.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        # Add buttons for scanning and backtesting
     col1, col2 = st.sidebar.columns(2)
     if col1.button("Scan Bullish Stocks", use_container_width=True):
         # Get Nifty 200 stocks
@@ -1361,6 +1312,151 @@ def main():
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
+                # Add custom CSS for styling
+    st.markdown("""
+    <style>
+    .stTabs [data-baseweb="tab-list"] {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-size: 1.2rem;
+        font-weight: bold;
+        padding: 1rem 2rem;
+        border-radius: 1rem;
+        background-color: #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e0e2e6;
+        transform: translateY(-2px);
+    }
+    
+    .stTabs [data-baseweb="tab"]:active {
+        background-color: #1e90ff;
+        color: white;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #f0f2f6 0%, #e0e2e6 100%);
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin: 1rem;
+        transition: transform 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .positive {
+        color: #22c55e;
+    }
+    
+    .negative {
+        color: #ef4444;
+    }
+    
+    .neutral {
+        color: #6b7280;
+    }
+    
+    .chart-container {
+        background: white;
+        padding: 1rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .condition-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+    }
+    
+    .condition-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .pattern-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .news-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .strength-meter {
+        height: 10px;
+        border-radius: 5px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+    
+    .strength-meter-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #1e90ff 0%, #22c55e 100%);
+        transition: width 0.5s ease;
+    }
+    
+    .recommendation-box {
+        background: linear-gradient(135deg, #1e90ff 0%, #22c55e 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 1rem;
+        text-align: center;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    .trend-arrow {
+        font-size: 1.2rem;
+        margin-left: 0.5rem;
+    }
+    
+    .bullish {
+        color: #22c55e;
+    }
+    
+    .bearish {
+        color: #ef4444;
+    }
+    
+    .summary-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 1rem;
+        margin: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        color: #1e90ff;
+    }
+    
+    </style>
+    """, unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()
