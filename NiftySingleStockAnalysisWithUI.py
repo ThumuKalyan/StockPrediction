@@ -204,6 +204,39 @@ nifty_200 = {
 # This is the mapping you need for news search when starting with a ticker
 ticker_to_company_name_map = {ticker: name for name, ticker in nifty_200.items()}
 
+# Dictionary mapping pattern names to descriptions
+PATTERN_DESCRIPTIONS = {
+    "Standard Doji": "Indicates indecision in the market. Neither buyers nor sellers gained control.",
+    "Shooting Star Doji": "A bearish reversal pattern that occurs after an uptrend, suggesting a potential top.",
+    "Dragonfly Doji": "A bullish reversal pattern that occurs after a downtrend, suggesting a potential bottom.",
+    "Long-Legged Doji": "Indicates strong indecision with significant price movement in both directions during the period.",
+    "Doji-like": "Similar to a Doji, indicates indecision, but with a very small real body.",
+
+    "Hammer": "A bullish reversal pattern occurring after a downtrend (Bullish Reversal Shape), suggests buying pressure came in after an initial sell-off.",
+    "Hanging Man": "A bearish reversal pattern occurring after an uptrend (Bearish Reversal Shape), suggests selling pressure came in after an initial rally.",
+    "Shooting Star": "A bearish reversal pattern occurring after an uptrend (Bearish Reversal Shape), suggests buying pressure failed and sellers took control.",
+    "Inverted Hammer": "A bullish reversal pattern occurring after a downtrend (Bullish Reversal Shape), suggests buyers are testing resistance levels.",
+
+    "Bullish Engulfing": "A major bullish reversal pattern where a large bullish candle completely engulfs the body of the previous bearish candle.",
+    "Bearish Engulfing": "A major bearish reversal pattern where a large bearish candle completely engulfs the body of the previous bullish candle.",
+
+    "Morning Star": "A bullish reversal pattern consisting of three candles, signaling a potential bottom.",
+    "Evening Star": "A bearish reversal pattern consisting of three candles, signaling a potential top.",
+
+    "Bullish Harami": "A bullish reversal pattern (often called a 'pregnant' pattern) where a small bullish candle is contained within the body of the previous bearish candle.",
+    "Bearish Harami": "A bearish reversal pattern where a small bearish candle is contained within the body of the previous bullish candle.",
+
+    "Bullish Marubozu": "A strong bullish candle with little to no shadows, indicating strong buying conviction.",
+    "Bearish Marubozu": "A strong bearish candle with little to no shadows, indicating strong selling conviction.",
+
+    "Spinning Top": "Indicates indecision, similar to a Doji but with a slightly larger body. Suggests potential price reversal.",
+
+    "Piercing Pattern": "A bullish reversal pattern where a bullish candle closes more than halfway up the body of the preceding bearish candle.",
+    "Dark Cloud Cover": "A bearish reversal pattern where a bearish candle closes more than halfway down the body of the preceding bullish candle."
+
+    # Add descriptions for any other patterns you add
+}
+
 def check_password():
     """Returns `True` if the user had the correct password."""
     def password_entered():
@@ -275,37 +308,230 @@ def calculate_rsi(data, periods=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-def calculate_technical_indicators(df):
-    """Calculate various technical indicators"""
+def check_candlestick_patterns(df):
+    """Check for advanced candlestick patterns"""
     try:
-        # Moving Averages
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['MA50'] = df['Close'].rolling(window=50).mean()
-        df['MA200'] = df['Close'].rolling(window=200).mean()
-        
-        # RSI
-        df['RSI'] = calculate_rsi(df['Close'], 14)
-        
-        # MACD
-        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = exp1 - exp2
-        df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        
-        # Stochastic Oscillator
-        low_min = df['Low'].rolling(window=14).min()
-        high_max = df['High'].rolling(window=14).max()
-        
-        df['Stoch_K'] = 100 * ((df['Close'] - low_min) / (high_max - low_min))
-        df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
-        
-        # Volume indicators
-        df['Volume_MA20'] = df['Volume'].rolling(window=20).mean()
-        
-        return df
+        # Ensure we have enough data for the patterns we want to check
+        # Some patterns need 2, 3, or even more candles. Let's ensure we have at least 4 for safety.
+        if len(df) < 4:
+            return []
+
+        # Get the last few days of data needed for pattern recognition
+        # We'll look at the last 3 candles for most patterns, but access up to the 4th last if needed.
+        last_candles = df.tail(4)
+
+        # Check if we have all required columns in the relevant slice
+        required_columns = ['Open', 'High', 'Low', 'Close']
+        if not all(col in last_candles.columns for col in required_columns):
+            return []
+
+        # Get the last few candles (most recent is candle_1)
+        candle_4 = last_candles.iloc[0] # 4th last candle
+        candle_3 = last_candles.iloc[1] # 3rd last candle
+        candle_2 = last_candles.iloc[2] # 2nd last candle
+        candle_1 = last_candles.iloc[3] # Last candle (most recent)
+
+
+        patterns = []
+
+        # Helper functions (already in your code, just keeping here for context)
+        def is_bullish(candle):
+            # Use .item() to get the scalar value from a potential Series element
+            return candle['Close'].item() > candle['Open'].item()
+
+        def is_bearish(candle):
+            return candle['Close'].item() < candle['Open'].item()
+
+        def get_candle_props(candle):
+            c_open = candle['Open'].item()
+            c_high = candle['High'].item()
+            c_low = candle['Low'].item()
+            c_close = candle['Close'].item()
+            
+            body = abs(c_close - c_open)
+            upper_shadow = c_high - max(c_open, c_close)
+            lower_shadow = min(c_open, c_close) - c_low
+            total_range = c_high - c_low
+            
+            # Return values, ensuring they are non-negative in case of data anomalies
+            return max(0, body), max(0, upper_shadow), max(0, lower_shadow), max(0, total_range)
+
+
+        # Get candle properties for the last few candles
+        body_1, upper_shadow_1, lower_shadow_1, total_range_1 = get_candle_props(candle_1)
+        body_2, upper_shadow_2, lower_shadow_2, total_range_2 = get_candle_props(candle_2)
+        body_3, upper_shadow_3, lower_shadow_3, total_range_3 = get_candle_props(candle_3)
+        # body_4, upper_shadow_4, lower_shadow_4, total_range_4 = get_candle_props(candle_4) # Example if 4th candle props are needed
+
+        # --- Existing Patterns (Refined slightly) ---
+
+        # 1. Doji Pattern (Existing variations)
+        if total_range_1 > 0 and body_1 <= 0.1 * total_range_1:
+            # Added a check that body is not zero for the shadow checks to avoid division by zero logic implicitly
+            if body_1 > 0 and upper_shadow_1 > 2 * body_1 and lower_shadow_1 <= body_1:
+                patterns.append("Shooting Star Doji")
+            elif body_1 > 0 and lower_shadow_1 > 2 * body_1 and upper_shadow_1 <= body_1:
+                patterns.append("Dragonfly Doji")
+            elif body_1 > 0 and upper_shadow_1 > body_1 and lower_shadow_1 > body_1:
+                patterns.append("Long-Legged Doji")
+            elif body_1 == 0: # Exactly zero body
+                 patterns.append("Standard Doji")
+            else: # Small body, not fitting specific Doji types
+              patterns.append("Doji-like (Small Body)")
+
+
+        # 2. Hammer / Hanging Man (Based on candle_1 shape and location)
+        # Hammer is bullish, Hanging Man is bearish, but they have the same shape
+        # Shape check: small upper shadow, small body, long lower shadow (> 2*body)
+        if upper_shadow_1 <= body_1 and lower_shadow_1 > 2 * body_1 and body_1 > 0: # Ensure body > 0 to avoid division by zero issues with body comparison
+            # Location check relative to recent price action (Simplified check using candle_2)
+            # Hammer: occurs after a downtrend (candle_2 close < candle_2 open), candle_1 opens near low of candle_2
+            if is_bearish(candle_2) and candle_1['Open'].item() <= candle_2['Close'].item(): # Simplified location check
+                patterns.append("Hammer (Bullish Reversal Shape)")
+            # Hanging Man: occurs after an uptrend (candle_2 close > candle_2 open), candle_1 opens near high of candle_2
+            elif is_bullish(candle_2) and candle_1['Open'].item() >= candle_2['Close'].item(): # Simplified location check
+                 patterns.append("Hanging Man (Bearish Reversal Shape)")
+
+
+        # 3. Shooting Star (Based on candle_1 shape and location)
+        # Shape check: small lower shadow, small body, long upper shadow (> 2*body)
+        if lower_shadow_1 <= body_1 and upper_shadow_1 > 2 * body_1 and body_1 > 0: # Ensure body > 0
+             # Location check relative to recent price action (Simplified check using candle_2)
+             # Occurs after an uptrend (candle_2 close > candle_2 open), candle_1 opens near high of candle_2
+            if is_bullish(candle_2) and candle_1['Open'].item() >= candle_2['Close'].item(): # Simplified location check
+                patterns.append("Shooting Star (Bearish Reversal Shape)")
+
+
+        # 4. Engulfing (Needs candle_1 and candle_2)
+        # Bullish Engulfing: bearish candle_2, bullish candle_1, candle_1 body engulfs candle_2 body
+        if (is_bearish(candle_2) and is_bullish(candle_1) and body_2 > 0 and body_1 > body_2 and # Ensure bodies > 0
+            candle_1['Close'].item() >= candle_2['Open'].item() and # Candle 1 closes above Candle 2 open
+            candle_1['Open'].item() <= candle_2['Close'].item()):    # Candle 1 opens below Candle 2 close
+            patterns.append("Bullish Engulfing")
+        # Bearish Engulfing: bullish candle_2, bearish candle_1, candle_1 body engulfs candle_2 body
+        elif (is_bullish(candle_2) and is_bearish(candle_1) and body_2 > 0 and body_1 > body_2 and # Ensure bodies > 0
+              candle_1['Open'].item() >= candle_2['Close'].item() and # Candle 1 opens above Candle 2 close
+              candle_1['Close'].item() <= candle_2['Open'].item()):    # Candle 1 closes below Candle 2 open
+            patterns.append("Bearish Engulfing")
+
+
+        # 5. Morning Star (Needs candle_1, candle_2, candle_3)
+        # Bearish candle_3, small body candle_2, bullish candle_1
+        # Candle_2 gaps below candle_3 close, candle_1 closes well into candle_3 body
+        if (is_bearish(candle_3) and body_3 > 0 and # Ensure body > 0
+            abs(candle_2['Close'].item() - candle_2['Open'].item()) < body_3 * 0.5 and # Small body 2 relative to body 3
+            candle_2['High'].item() < candle_3['Close'].item() and # Gap down (or near)
+            is_bullish(candle_1) and body_1 > 0 and # Ensure body > 0
+            candle_1['Open'].item() > candle_2['Close'].item() and # Gap up (or near)
+            candle_1['Close'].item() > (candle_3['Open'].item() + candle_3['Close'].item()) / 2): # Candle 1 closes well into candle 3 body
+            patterns.append("Morning Star")
+
+        # 6. Evening Star (Needs candle_1, candle_2, candle_3)
+        # Bullish candle_3, small body candle_2, bearish candle_1
+        # Candle_2 gaps above candle_3 close, candle_1 closes well into candle_3 body
+        elif (is_bullish(candle_3) and body_3 > 0 and # Ensure body > 0
+              abs(candle_2['Close'].item() - candle_2['Open'].item()) < body_3 * 0.5 and # Small body 2 relative to body 3
+              candle_2['Low'].item() > candle_3['Close'].item() and # Gap up (or near)
+              is_bearish(candle_1) and body_1 > 0 and # Ensure body > 0
+              candle_1['Open'].item() < candle_2['Close'].item() and # Gap down (or near)
+              candle_1['Close'].item() < (candle_3['Open'].item() + candle_3['Close'].item()) / 2): # Candle 1 closes well into candle 3 body
+            patterns.append("Evening Star")
+
+        # 7. Harami (Needs candle_1 and candle_2)
+        # Bullish Harami: Bearish candle_2, small bullish candle_1 completely within candle_2 body
+        if (is_bearish(candle_2) and body_2 > 0 and # Ensure body > 0
+            is_bullish(candle_1) and body_1 > 0 and body_1 < body_2 and # Ensure bodies > 0 and body 1 < body 2
+            candle_1['High'].item() <= max(candle_2['Open'].item(), candle_2['Close'].item()) and # Candle 1 high within body 2
+            candle_1['Low'].item() >= min(candle_2['Open'].item(), candle_2['Close'].item())):    # Candle 1 low within body 2
+            patterns.append("Bullish Harami")
+        # Bearish Harami: Bullish candle_2, small bearish candle_1 completely within candle_2 body
+        elif (is_bullish(candle_2) and body_2 > 0 and # Ensure body > 0
+              is_bearish(candle_1) and body_1 > 0 and body_1 < body_2 and # Ensure bodies > 0 and body 1 < body 2
+              candle_1['High'].item() <= max(candle_2['Open'].item(), candle_2['Close'].item()) and # Candle 1 high within body 2
+              candle_1['Low'].item() >= min(candle_2['Open'].item(), candle_2['Close'].item())):    # Candle 1 low within body 2
+            patterns.append("Bearish Harami")
+
+
+        # --- Added Patterns ---
+
+        # 8. Marubozu (Needs candle_1)
+        # Bullish Marubozu: Long bullish candle with almost no shadows
+        if is_bullish(candle_1) and total_range_1 > 0 and body_1 >= 0.9 * total_range_1: # Body is at least 90% of total range
+             patterns.append("Bullish Marubozu")
+        # Bearish Marubozu: Long bearish candle with almost no shadows
+        elif is_bearish(candle_1) and total_range_1 > 0 and body_1 >= 0.9 * total_range_1: # Body is at least 90% of total range
+             patterns.append("Bearish Marubozu")
+
+
+        # 9. Spinning Top (Needs candle_1)
+        # Small body, upper shadow roughly equals lower shadow, both shadows relatively long compared to body
+        if total_range_1 > 0 and body_1 > 0 and body_1 < 0.3 * total_range_1: # Small body (e.g., less than 30% of range) and body > 0
+             # Shadows are relatively equal and longer than body
+             if abs(upper_shadow_1 - lower_shadow_1) <= 0.5 * body_1 and upper_shadow_1 > body_1 and lower_shadow_1 > body_1:
+                 patterns.append("Spinning Top")
+
+
+        # 10. Inverted Hammer (Needs candle_1 shape and location)
+        # Shape check: small lower shadow, small body, long upper shadow (> 2*body) - same shape as Shooting Star
+        # Location check: occurs after a downtrend (candle_2 close < candle_2 open), candle_1 opens and closes near the *low* of the range
+        if lower_shadow_1 <= body_1 and upper_shadow_1 > 2 * body_1 and body_1 > 0: # Ensure body > 0
+             # Check if it's a potential Inverted Hammer (occurs after downtrend)
+            if is_bearish(candle_2) and max(candle_1['Open'].item(), candle_1['Close'].item()) <= candle_1['Low'].item() + 0.3 * total_range_1: # Open/Close in lower part of range
+                 patterns.append("Inverted Hammer (Bullish Reversal Shape)")
+
+
+        # 11. Piercing Pattern (Needs candle_1 and candle_2)
+        # Bullish reversal: Bearish candle_2, bullish candle_1 opens below candle_2 low, closes > 50% into candle_2 body
+        if (is_bearish(candle_2) and body_2 > 0 and # Ensure body > 0
+            is_bullish(candle_1) and body_1 > 0 and # Ensure body > 0
+            candle_1['Open'].item() < candle_2['Low'].item() and # Gap down on open
+            candle_1['Close'].item() > (candle_2['Open'].item() + candle_2['Close'].item()) / 2): # Closes more than halfway up candle 2 body
+            patterns.append("Piercing Pattern")
+
+        # 12. Dark Cloud Cover (Needs candle_1 and candle_2)
+        # Bearish reversal: Bullish candle_2, bearish candle_1 opens above candle_2 high, closes > 50% into candle_2 body (from the top)
+        elif (is_bullish(candle_2) and body_2 > 0 and # Ensure body > 0
+              is_bearish(candle_1) and body_1 > 0 and # Ensure body > 0
+              candle_1['Open'].item() > candle_2['High'].item() and # Gap up on open
+              candle_1['Close'].item() < (candle_2['Open'].item() + candle_2['Close'].item()) / 2): # Closes more than halfway down candle 2 body
+            patterns.append("Dark Cloud Cover")
+
+
+        # Add more patterns here following similar logic...
+
+        # Remove potential duplicates if a single candle fits multiple basic shapes (e.g., a perfect Doji is also a Spinning Top shape)
+        # This is a simple way to prioritize more specific pattern names if overlaps occur.
+        # You might want to refine the pattern logic to be mutually exclusive where possible.
+        # For now, let's just remove pure "Doji-like" if a more specific Doji or Spinning Top is found.
+        if "Doji-like (Small Body)" in patterns and (
+            "Standard Doji" in patterns or
+            "Shooting Star Doji" in patterns or
+            "Dragonfly Doji" in patterns or
+            "Long-Legged Doji" in patterns or
+            "Spinning Top" in patterns):
+             patterns.remove("Doji-like (Small Body)")
+
+        # Clean up shape names if a more specific pattern is identified that implies the shape
+        if "Hammer (Bullish Reversal Shape)" in patterns:
+             if "Hammer" in patterns: patterns.remove("Hammer") # Remove generic if specific is found
+             if "Hanging Man (Bearish Reversal Shape)" in patterns: patterns.remove("Hanging Man (Bearish Reversal Shape)") # These shapes are mutually exclusive based on trend check now
+
+        if "Shooting Star (Bearish Reversal Shape)" in patterns:
+              if "Shooting Star" in patterns: patterns.remove("Shooting Star") # Remove generic if specific is found
+
+        if "Inverted Hammer (Bullish Reversal Shape)" in patterns:
+              # No generic 'Inverted Hammer' in original code, but good to keep this structure
+              pass # No action needed currently, but useful if a generic was added later
+
+
+        return sorted(list(set(patterns))) # Return unique patterns, sorted alphabetically
+
     except Exception as e:
-        st.error(f"Error in calculate_technical_indicators: {str(e)}")
-        return None
+        # Use logging for errors in functions
+        logging.error(f"Error in check_candlestick_patterns: {str(e)}")
+        # Print traceback for debugging
+        traceback.print_exc()
+        return []
 
 def calculate_target_and_sl(df):
     """Calculate target price and stop loss using ATR and price action"""
@@ -604,106 +830,246 @@ def calculate_resistance_levels(df):
                 round(float(df['High'].iloc[-1] * 1.02), 2), 
                 round(float(df['High'].iloc[-1] * 1.03), 2)]  # Fallback levels rounded to 2 decimals
 
-def generate_analysis_summary(conditions, patterns, news_data):
-    """Generate a comprehensive analysis summary based on technical and fundamental indicators"""
-    summary = []
+def generate_analysis_summary(conditions, patterns, news_data, raw_score, strength_score):
+    """Generate a comprehensive analysis summary with rich UI formatting."""
+    summary_points_formatted = [] # Use a list to build formatted points
 
-    # Trend Analysis
+    # --- Trend Analysis ---
     trend_summary = []
-    if conditions.get("Strong Uptrend"): # Use .get() for safety
-        trend_summary.append("Strong uptrend across all timeframes")
-    elif conditions.get("Price > MA20") and conditions.get("Price > MA50"):
-        trend_summary.append("Bullish trend on medium-term")
-    elif conditions.get("Price < MA200"): # Add a simple bearish trend check
-        trend_summary.append("Bearish trend on long-term")
+    trend_color = 'neutral'
+    if conditions.get("Strong Uptrend"):
+        trend_summary.append("Strong Uptrend across multiple timeframes.")
+        trend_color = 'positive'
+    elif conditions.get("Price > MA20") and conditions.get("Price > MA50") and conditions.get("Price > MA200"):
+         trend_summary.append("Price trending above key Moving Averages (MA20, MA50, MA200), indicating a Bullish trend across multiple timeframes.")
+         trend_color = 'positive'
+    elif conditions.get("Price > MA50"):
+        trend_summary.append("Stock is in a Bullish trend on the medium-term (above MA50).")
+        trend_color = 'positive'
+    elif conditions.get("Price < MA200"):
+        trend_summary.append("Stock is in a Bearish trend on the long-term (below MA200).")
+        trend_color = 'negative'
+    elif conditions.get("Price < MA20") and conditions.get("Price < MA50") and conditions.get("Price < MA200"):
+         trend_summary.append("Price trending below key Moving Averages (MA20, MA50, MA200), indicating a Bearish trend across multiple timeframes.")
+         trend_color = 'negative'
     else:
-        trend_summary.append("Mixed trend conditions")
-    summary.append(f"Trend: {', '.join(trend_summary)}")
+        trend_summary.append("Trend analysis shows Mixed or Neutral conditions.")
+        trend_color = 'neutral'
 
-    # Momentum Analysis
+    if trend_summary:
+        # Format trend summary with color
+        formatted_trend = f"<span class='{trend_color}'>{' '.join(trend_summary)}</span>"
+        summary_points_formatted.append(f"**Trend Analysis:** {formatted_trend}")
+
+
+    # --- Momentum Analysis ---
     momentum_summary = []
+    momentum_color = 'neutral'
     # Check if conditions exist and are True
-    if conditions.get("RSI Bullish"):
-        momentum_summary.append("RSI indicates bullish momentum")
-    elif conditions.get("RSI < 30"): # Assuming you add this condition later
-         momentum_summary.append("RSI is oversold")
-    elif conditions.get("RSI > 70"): # Assuming you add this condition later
-         momentum_summary.append("RSI is overbought")
+    if conditions.get("RSI Bullish") and conditions.get("MACD Bullish") and conditions.get("Stochastic Bullish"):
+         momentum_summary.append("Momentum indicators (RSI, MACD, Stochastic) all showing Bullish signals.")
+         momentum_color = 'positive'
+    elif conditions.get("RSI Bullish") or conditions.get("MACD Bullish") or conditions.get("Stochastic Bullish"):
+         bullish_indicators = [
+             "RSI" if conditions.get("RSI Bullish") else None,
+             "MACD" if conditions.get("MACD Bullish") else None,
+             "Stochastic" if conditions.get("Stochastic Bullish") else None
+         ]
+         bullish_indicators = [ind for ind in bullish_indicators if ind is not None]
+         momentum_summary.append(f"Some momentum indicators ({', '.join(bullish_indicators)}) show Bullish momentum.")
+         momentum_color = 'positive' # Still leans positive if some are bullish
 
+    elif conditions.get("RSI Overbought") or conditions.get("Stochastic Overbought"):
+         overbought_indicators = [
+             "RSI" if conditions.get("RSI Overbought") else None,
+             "Stochastic" if conditions.get("Stochastic Overbought") else None
+         ]
+         overbought_indicators = [ind for ind in overbought_indicators if ind is not None]
+         momentum_summary.append(f"Momentum indicators ({', '.join(overbought_indicators)}) showing Overbought conditions.")
+         momentum_color = 'negative' # Overbought is often seen as bearish signal for entry
 
-    if conditions.get("MACD Bullish"):
-        momentum_summary.append("MACD shows bullish crossover and is positive")
-    elif conditions.get("MACD Bearish"): # Assuming you add this condition later
-         momentum_summary.append("MACD shows bearish crossover or is negative")
+    elif conditions.get("RSI Oversold") or conditions.get("Stochastic Oversold"):
+         oversold_indicators = [
+             "RSI" if conditions.get("RSI Oversold") else None,
+             "Stochastic" if conditions.get("Stochastic Oversold") else None
+         ]
+         oversold_indicators = [ind for ind in oversold_indicators if ind is not None]
+         momentum_summary.append(f"Momentum indicators ({', '.join(oversold_indicators)}) showing Oversold conditions.")
+         momentum_color = 'positive' # Oversold is often seen as bullish signal for entry
 
-    if conditions.get("Stochastic Bullish"):
-        momentum_summary.append("Stochastic indicates bullish momentum (K > D)")
-    elif conditions.get("Stochastic Bearish"): # Assuming you add this condition later
-         momentum_summary.append("Stochastic indicates bearish momentum (K < D)")
-    elif conditions.get("Stochastic Oversold"): # Assuming you add this condition later
-         momentum_summary.append("Stochastic is oversold (< 20)")
-    elif conditions.get("Stochastic Overbought"): # Assuming you add this condition later
-         momentum_summary.append("Stochastic is overbought (> 80)")
+    elif conditions.get("MACD Bearish"):
+         momentum_summary.append("MACD shows Bearish crossover or is negative.")
+         momentum_color = 'negative'
 
     if not momentum_summary:
-        momentum_summary.append("Neutral or mixed momentum signals")
-    summary.append(f"Momentum: {', '.join(momentum_summary)}")
+        momentum_summary.append("Momentum signals are mixed or neutral.")
+        momentum_color = 'neutral'
 
-    # Pattern Analysis
+    if momentum_summary:
+        # Format momentum summary with color
+        formatted_momentum = f"<span class='{momentum_color}'>{' '.join(momentum_summary)}</span>"
+        summary_points_formatted.append(f"**Momentum Analysis:** {formatted_momentum}")
+
+
+    # --- Pattern Analysis ---
     pattern_summary = []
-    bullish_patterns_found = [p for p in patterns if p in ["Hammer (Bullish Shape)", "Morning Star", "Bullish Engulfing", "Bullish Harami", "Dragonfly Doji"]]
-    bearish_patterns_found = [p for p in patterns if p in ["Hanging Man (Bearish Shape)", "Evening Star", "Bearish Engulfing", "Bearish Harami", "Shooting Star (Bearish Shape)", "Shooting Star Doji"]]
-    neutral_patterns_found = [p for p in patterns if p in ["Doji", "Long-Legged Doji"] and p not in bullish_patterns_found + bearish_patterns_found]
+    pattern_color = 'neutral'
+
+    # Re-use the logic from the check_candlestick_patterns to classify found patterns
+    bullish_patterns_found = [p for p in patterns if p in [
+        "Hammer (Bullish Reversal Shape)", "Morning Star", "Bullish Engulfing", "Bullish Harami", "Dragonfly Doji",
+        "Bullish Marubozu", "Inverted Hammer (Bullish Reversal Shape)", "Piercing Pattern"
+        # Add other bullish patterns here
+    ]]
+
+    bearish_patterns_found = [p for p in patterns if p in [
+        "Hanging Man (Bearish Reversal Shape)", "Evening Star", "Bearish Engulfing", "Bearish Harami", "Shooting Star (Bearish Reversal Shape)",
+        "Shooting Star Doji", "Bearish Marubozu", "Dark Cloud Cover"
+        # Add other bearish patterns here
+    ]]
+
+    neutral_patterns_found = [p for p in patterns if p not in bullish_patterns_found + bearish_patterns_found]
 
 
     if bullish_patterns_found and not bearish_patterns_found:
-        pattern_summary.append(f"Potential bullish patterns: {', '.join(bullish_patterns_found)}")
+        pattern_summary.append(f"Potential bullish candlestick patterns detected: {', '.join(bullish_patterns_found)}.")
+        pattern_color = 'positive'
     elif bearish_patterns_found and not bullish_patterns_found:
-        pattern_summary.append(f"Potential bearish patterns: {', '.join(bearish_patterns_found)}")
+        pattern_summary.append(f"Potential bearish candlestick patterns detected: {', '.join(bearish_patterns_found)}.")
+        pattern_color = 'negative'
     elif bullish_patterns_found and bearish_patterns_found:
-        pattern_summary.append(f"Conflicting patterns detected. Bullish: {', '.join(bullish_patterns_found)}. Bearish: {', '.join(bearish_patterns_found)}")
+        pattern_summary.append(f"Conflicting candlestick patterns detected. Bullish: {', '.join(bullish_patterns_found)}. Bearish: {', '.join(bearish_patterns_found)}.")
+        pattern_color = 'neutral' # Conflicting is neutral/caution
     elif neutral_patterns_found:
-        pattern_summary.append(f"Neutral or indecision patterns: {', '.join(neutral_patterns_found)}")
+        pattern_summary.append(f"Neutral or indecision patterns detected: {', '.join(neutral_patterns_found)}.")
+        pattern_color = 'neutral'
     else:
         pattern_summary.append("No significant candlestick patterns detected recently.")
+        pattern_color = 'neutral'
 
-    summary.append(f"Patterns: {', '.join(pattern_summary)}")
+    if pattern_summary:
+         # Format pattern summary with color
+        formatted_pattern = f"<span class='{pattern_color}'>{' '.join(pattern_summary)}</span>"
+        summary_points_formatted.append(f"**Pattern Analysis:** {formatted_pattern}")
 
-    # Sentiment Analysis
+
+    # --- Sentiment Analysis ---
     sentiment_summary = []
-    if conditions.get("Positive News"):
-        sentiment_summary.append(f"Positive news sentiment (Score: {news_data['sentiment_score']:.2f})")
-    elif news_data.get("sentiment_label") == "Negative": # Check if negative sentiment is a possibility from your news function
-         sentiment_summary.append(f"Negative news sentiment (Score: {news_data['sentiment_score']:.2f})")
+    sentiment_color = 'neutral'
+    sentiment_label = news_data.get("sentiment_label", "Neutral")
+    sentiment_score_val = news_data.get("sentiment_score", 'N/A')
+
+    if sentiment_label == "Positive":
+        sentiment_summary.append(f"News sentiment is Positive (Score: {sentiment_score_val:.2f}).")
+        sentiment_color = 'positive'
+    elif sentiment_label == "Negative":
+        sentiment_summary.append(f"News sentiment is Negative (Score: {sentiment_score_val:.2f}).")
+        sentiment_color = 'negative'
     else:
-        sentiment_summary.append(f"Neutral news sentiment (Score: {news_data.get('sentiment_score', 'N/A'):.2f})") # Use .get for safety
+        sentiment_summary.append(f"News sentiment is Neutral (Score: {sentiment_score_val:.2f}).")
+        sentiment_color = 'neutral'
 
-    summary.append(f"Sentiment: {', '.join(sentiment_summary)}")
+    if sentiment_summary:
+        # Format sentiment summary with color
+        formatted_sentiment = f"<span class='{sentiment_color}'>{' '.join(sentiment_summary)}</span>"
+        summary_points_formatted.append(f"**Sentiment Analysis:** {formatted_sentiment}")
 
-    # Risk Management
-    risk_summary = []
+
+    # --- Risk Management & Levels ---
+    risk_levels_summary = []
+    risk_color = 'neutral'
+
     if conditions.get("Good Risk-Reward"):
-        risk_summary.append("Favorable risk-reward ratio")
+        risk_levels_summary.append("Calculated Risk-Reward Ratio is favorable.")
+        risk_color = 'positive' # Favorable R:R is a positive risk factor
     else:
-         risk_summary.append("Risk-reward ratio may not be favorable")
+         risk_levels_summary.append("Calculated Risk-Reward Ratio may not be favorable.")
+         # Color can remain neutral or be negative depending on how unfavorable
 
     if conditions.get("Reasonable Volatility"):
-        risk_summary.append("Moderate volatility levels")
-    else:
-         risk_summary.append("Volatility may be high or low") # Provide context if not reasonable
+        risk_levels_summary.append("Volatility levels are within a reasonable range.")
+        # Color can be neutral or slightly positive depending on view
+    elif news_data.get("volatility") is not None:
+         if news_data["volatility"] > 40:
+              risk_levels_summary.append("Volatility is currently High.")
+              # Color can be neutral or negative depending on view (high vol is higher risk)
+         else:
+              risk_levels_summary.append("Volatility is currently Low.")
+              # Color can be neutral or positive depending on view (low vol might mean cheaper options but less movement)
+
 
     if conditions.get("Above Support"):
-         risk_summary.append("Price is trading above recent support")
-    # Add check for below resistance if relevant
+         risk_levels_summary.append("Price trading above a recent calculated support level.")
+         risk_color = 'positive' # Above support is generally bullish/positive risk
 
-    if not risk_summary:
-        risk_summary.append("Risk factors not fully assessed")
+    if conditions.get("Below Resistance"): # Add this condition check if you create it later
+         risk_levels_summary.append("Price trading below a recent calculated resistance level.")
+         # Color can remain neutral or be negative depending on view (below resistance is generally bearish/negative)
 
-    summary.append(f"Risk: {', '.join(risk_summary)}")
 
-    return "\n".join(summary)
+    if not risk_levels_summary:
+        risk_levels_summary.append("Risk factors and price levels not fully assessed.")
+        risk_color = 'neutral'
 
-def generate_trade_recommendation(strength_score, conditions):
+    if risk_levels_summary:
+        # Decide the overall color for the Risk & Levels section
+        # This is a bit tricky as points can be mixed. You could set color based on most dominant signal
+        # For simplicity, let's just make the section title bold for now, or color based on the R:R primarily.
+        if 'positive' in [risk_color]: # Check if any specific point made it positive
+             formatted_risk = f"<span class='positive'>{' '.join(risk_levels_summary)}</span>"
+             summary_points_formatted.append(f"**Risk & Levels:** {formatted_risk}")
+        # Add other color checks here based on your preference
+        else:
+             formatted_risk = f"{' '.join(risk_levels_summary)}" # No overall color class applied
+             summary_points_formatted.append(f"**Risk & Levels:** {formatted_risk}")
+
+
+
+    # --- Overall Conclusion ---
+    overall_conclusion = []
+    conclusion_color = 'neutral'
+    # You can add logic here to provide a more direct conclusion
+    # based on the combination of factors, linking different points.
+    # For example:
+    if any("Strong Uptrend" in s or "Bullish trend across" in s for s in trend_summary) and (any("Bullish momentum" in s for s in momentum_summary) or any(p in bullish_patterns_found for p in patterns)):
+        overall_conclusion.append("Overall technical signals suggest a potential continuation of bullish movement or a bullish reversal opportunity.")
+        conclusion_color = 'positive'
+    elif any("Bearish trend across" in s for s in trend_summary) and (any("Bearish momentum" in s for s in momentum_summary) or any(p in bearish_patterns_found for p in patterns)):
+         overall_conclusion.append("Overall technical signals suggest a potential continuation of bearish movement or a bearish reversal risk.")
+         conclusion_color = 'negative'
+    elif any("Overbought conditions" in s for s in momentum_summary):
+         overall_conclusion.append("Technical indicators are showing overbought conditions, suggesting caution or potential pullback.")
+         conclusion_color = 'negative'
+    elif any("Oversold conditions" in s for s in momentum_summary):
+         overall_conclusion.append("Technical indicators are showing oversold conditions, suggesting potential for a bounce.")
+         conclusion_color = 'positive'
+    else:
+         overall_conclusion.append("The analysis presents mixed signals, suggesting a neutral stance or waiting for clearer market direction.")
+         conclusion_color = 'neutral'
+
+    if overall_conclusion:
+        # Format conclusion with color
+        formatted_conclusion = f"<span class='{conclusion_color}'>{' '.join(overall_conclusion)}</span>"
+        summary_points_formatted.append(f"**Conclusion:** {formatted_conclusion}")
+
+
+    # --- Scoring Explanation ---
+    scoring_explanation = (
+        "**Scoring Explanation:** A dynamic strength score (0-100) is calculated based on a point system. "
+        "Points are assigned based on factors like: Price position relative to Moving Averages, Momentum indicator values (RSI, MACD, Stochastic), "
+        "Volume analysis, detected Candlestick Patterns, calculated Risk-Reward Ratio, Volatility levels, and News Sentiment. "
+        "Positive indicators add points, while negative indicators subtract points. "
+        "The total raw score is then normalized to a 0-100 scale, where a higher score indicates stronger bullish signals."
+    )
+    # This section is informational, keeping it neutral color is usually best
+    summary_points_formatted.append(scoring_explanation)
+
+
+    # Join all formatted points into the final summary string, separated by markdown list items
+    return "\n".join([f"* {point}" for point in summary_points_formatted])
+
+   
+def generate_trade_recommendation(strength_score, conditions, raw_score):
     """Generate a trade recommendation based on the revised strength score and conditions."""
     # Prioritize conflicting or bearish signals
     if conditions["Bearish Pattern"]:
@@ -722,38 +1088,7 @@ def generate_trade_recommendation(strength_score, conditions):
         return "Neutral / Hold"
     else:
         return "Neutral / Weak" # Or "Avoid"
-    """Generate a trade recommendation based on analysis results"""
-    if strength_score >= 80:
-        return "STRONG BUY - Multiple bullish conditions aligned"
-    
-    if strength_score >= 60:
-        reasons = []
-        if conditions["Strong Uptrend"]:
-            reasons.append("Strong trend")
-        if conditions["RSI Bullish"] and conditions["MACD Bullish"]:
-            reasons.append("Strong momentum")
-        if conditions["Bullish Pattern"]:
-            reasons.append("Bullish patterns")
-        if conditions["Positive News"]:
-            reasons.append("Positive sentiment")
-        
-        return f"BUY - {len(reasons)} strong bullish factors: {', '.join(reasons)}"
-    
-    if strength_score >= 40:
-        return "NEUTRAL - Mixed signals, wait for clearer trend"
-    
-    if strength_score >= 20:
-        reasons = []
-        if conditions["Bearish Pattern"]:
-            reasons.append("Bearish patterns")
-        if conditions["RSI Bullish"] is False:  # Changed from RSI < 30 to use the existing condition
-            reasons.append("Overbought conditions")
-        if conditions["Stochastic Bullish"] is False:
-            reasons.append("Bearish divergence")
-        
-        return f"SELL - {len(reasons)} bearish factors: {', '.join(reasons)}"
-    
-    return "STRONG SELL - Strong bearish conditions aligned"
+   
 
 def get_nifty_200_stocks():
     """Return hardcoded list of Nifty 200 stocks"""   
@@ -789,7 +1124,12 @@ def analyze_stock(ticker):
         price_levels = calculate_target_and_sl(df)
         if price_levels is None:
             print("Error: Failed to calculate target and stop loss.")
-            return None
+            return None        
+       
+
+        # --- Add ranges to the result dictionary ---
+        # Add these to the 'result' dictionary just before the return statement
+        # Format them as strings for display
 
         # --- Get Latest Values ---
         print("Getting latest values...")
@@ -802,6 +1142,12 @@ def analyze_stock(ticker):
 
         # Safely access latest values, providing defaults or checking for NaN later
         current_price = float(latest.get('Close', np.nan))
+         # --- Calculate Entry and Exit Ranges ---
+        entry_range_lower = None
+        entry_range_upper = None
+        exit_range_lower = None
+        exit_range_upper = None
+        
         ma20 = float(latest.get('MA20', np.nan))
         ma50 = float(latest.get('MA50', np.nan))
         ma200 = float(latest.get('MA200', np.nan))
@@ -875,10 +1221,33 @@ def analyze_stock(ticker):
             elif support_levels: # If all supports are above current price, consider the lowest one
                  current_support = min(support_levels)
 
+        # Ensure we have necessary values and they are not NaN
+        if current_price is not None and current_atr is not None and price_levels.get('target_price') is not None and price_levels.get('stop_loss') is not None:
+            # Calculate Entry Range based on Current Price, ATR, and Stop Loss
+            # Entry range: From max(Stop Loss, Current Price - 0.5*ATR) to Current Price + 0.1*ATR
+            # This suggests an entry area that avoids going below the stop loss
+            entry_range_lower = max(price_levels['stop_loss'], current_price - 0.5 * current_atr)
+            entry_range_upper = current_price + 0.1 * current_atr
 
+            # Calculate Exit Range based on Target Price and ATR
+            # Exit range: From Target Price - ATR to Target Price
+            # Ensure target is above current price for a valid exit range for a long position
+            target_price = price_levels['target_price']
+            if target_price > current_price:
+                exit_range_lower = target_price - current_atr
+                exit_range_upper = target_price
+
+            # Ensure lower bound of ranges are not higher than upper bound after calculations
+            if entry_range_lower is not None and entry_range_upper is not None:
+                 entry_range_lower = min(entry_range_lower, entry_range_upper) # Correct if lower somehow ends up higher
+                 entry_range_upper = max(entry_range_lower, entry_range_upper) # Ensure upper is max
+
+            if exit_range_lower is not None and exit_range_upper is not None:
+                 exit_range_lower = min(exit_range_lower, exit_range_upper) # Correct if lower somehow ends up higher
+                 exit_range_upper = max(exit_range_lower, exit_range_upper) # Ensure upper is max
         # --- Check Candlestick Patterns ---
         print("Checking candlestick patterns...")
-        patterns = check_candlestick_patterns(df)
+        patterns = check_candlestick_patterns(df)       
 
         # --- Get News Sentiment ---
         print("Getting news sentiment...")
@@ -932,9 +1301,38 @@ def analyze_stock(ticker):
             "Increasing Volume": not np.isnan(volume_change) and volume_change > 20, # Percentage change > 20%
 
             # Pattern Conditions (Based on findings from check_candlestick_patterns)
-            "Bullish Pattern": any(p in ["Hammer (Bullish Shape)", "Morning Star", "Bullish Engulfing", "Bullish Harami", "Dragonfly Doji"] for p in patterns),
-            "Bearish Pattern": any(p in ["Hanging Man (Bearish Shape)", "Evening Star", "Bearish Engulfing", "Bearish Harami", "Shooting Star (Bearish Shape)", "Shooting Star Doji"] for p in patterns),
-            "Neutral Pattern": any(p in ["Doji", "Long-Legged Doji"] for p in patterns) and not any(p in patterns for p in ["Hammer (Bullish Shape)", "Morning Star", "Bullish Engulfing", "Bullish Harami", "Dragonfly Doji", "Hanging Man (Bearish Shape)", "Evening Star", "Bearish Engulfing", "Bearish Harami", "Shooting Star (Bearish Shape)", "Shooting Star Doji"]),
+            "Bullish Pattern": any(p in [
+                "Hammer (Bullish Reversal Shape)", # Updated name
+                "Morning Star",
+                "Bullish Engulfing",
+                "Bullish Harami",
+                "Dragonfly Doji",
+                "Bullish Marubozu",       # Added
+                "Inverted Hammer (Bullish Reversal Shape)", # Added
+                "Piercing Pattern"        # Added
+                 # Add other bullish patterns here
+                ] for p in patterns),
+
+            "Bearish Pattern": any(p in [
+                "Hanging Man (Bearish Reversal Shape)", # Updated name
+                "Evening Star",
+                "Bearish Engulfing",
+                "Bearish Harami",
+                "Shooting Star (Bearish Reversal Shape)", # Updated name
+                "Shooting Star Doji",
+                "Bearish Marubozu",       # Added
+                "Dark Cloud Cover"        # Added
+                # Add other bearish patterns here
+                ] for p in patterns),
+
+            # Neutral Pattern: True if any pattern is found, but none are classified as bullish or bearish above
+            "Neutral Pattern": bool(patterns) and not any(p in patterns for p in [
+                "Hammer (Bullish Reversal Shape)", "Morning Star", "Bullish Engulfing", "Bullish Harami", "Dragonfly Doji",
+                "Bullish Marubozu", "Inverted Hammer (Bullish Reversal Shape)", "Piercing Pattern", # Bullish
+                "Hanging Man (Bearish Reversal Shape)", "Evening Star", "Bearish Engulfing", "Bearish Harami", "Shooting Star (Bearish Reversal Shape)",
+                "Shooting Star Doji", "Bearish Marubozu", "Dark Cloud Cover" # Bearish
+                # Add other classified patterns here
+                ]),
 
             # Risk Management
             "Good Risk-Reward": risk_reward_ratio >= 2.0,
@@ -1115,6 +1513,11 @@ def analyze_stock(ticker):
         result = {
             "ticker": ticker,
             "price": round(current_price, 2) if not np.isnan(current_price) else None,
+            # Add the new range values (formatted as strings for display)
+            "entry_range": f"₹{entry_range_lower:.2f} - ₹{entry_range_upper:.2f}" if entry_range_lower is not None and entry_range_upper is not None else "N/A",
+            "exit_range": f"₹{exit_range_lower:.2f} - ₹{exit_range_upper:.2f}" if exit_range_lower is not None and exit_range_upper is not None else "N/A",
+            "target": price_levels.get('target_price', None),
+            "stop_loss": price_levels.get('stop_loss', None),
             "daily_change": round(daily_change, 2),
             "target": price_levels.get('target_price', None),
             "stop_loss": price_levels.get('stop_loss', None),
@@ -1141,8 +1544,8 @@ def analyze_stock(ticker):
             # conditions_met and total_conditions are less relevant with point system
             "raw_strength_score": raw_score, # Add raw score for debugging/understanding
             "strength_score": strength_score, # Use the new normalized score
-            "analysis_summary": generate_analysis_summary(conditions, patterns, news_data),
-            "trade_recommendation": generate_trade_recommendation(strength_score, conditions), # Use new recommendation logic
+            "analysis_summary": generate_analysis_summary(conditions, patterns, news_data, raw_score, strength_score), 
+            "trade_recommendation": generate_trade_recommendation(strength_score, conditions, raw_score),
             "data": df
         }
 
@@ -1463,7 +1866,41 @@ def main():
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
-                
+                 # --- Add new row for Entry/Exit Ranges and Stop Loss ---
+               
+                st.markdown("---") # Add a separator
+                col4, col5, col6 = st.columns(3)
+
+                with col4:
+                    # Entry Range Card
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3>Best Entry Range</h3>
+                        <p>{result.get('entry_range', 'N/A')}</p>
+                        <p style="font-size: 0.8em; color: #555;">Suggested entry area.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col5:
+                    # Exit Range Card
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3>Potential Exit Range</h3>
+                        <p>{result.get('exit_range', 'N/A')}</p>
+                        <p style="font-size: 0.8em; color: #555;">Suggested area to consider exiting.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col6:
+                    # Stop Loss Card (Displaying the single calculated value)
+                    # Add color coding if you want (e.g., neutral as it's a risk management point)
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h3>Stop Loss</h3>
+                        <p>₹{result.get('stop_loss', 'N/A'):,.2f}</p>
+                         <p style="font-size: 0.8em; color: #555;">Level to limit potential losses.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 # Support/Resistance with gradient background
                 st.markdown("<h2 class='section-title'>Support/Resistance Levels</h2>", unsafe_allow_html=True)
                 st.markdown(f"""
@@ -1521,21 +1958,31 @@ def main():
                 st.markdown("<h2 class='section-title'>Candlestick Patterns</h2>", unsafe_allow_html=True)
                 if result['candlestick_patterns']:
                     for pattern in result['candlestick_patterns']:
+                        # Get the description, defaulting to a message if not found
+                        description = PATTERN_DESCRIPTIONS.get(pattern, "Description not available.")
+                        # Determine color based on pattern name for consistency
+                        color_class = 'positive' if any(word in pattern for word in ['Bullish', 'Hammer', 'Dragonfly', 'Morning', 'Piercing']) else \
+                                      'negative' if any(word in pattern for word in ['Bearish', 'Hanging Man', 'Shooting Star', 'Evening', 'Dark Cloud']) else 'neutral'
+
                         st.markdown(f"""
                         <div class="pattern-card">
-                            <p class="{'positive' if 'Bullish' in pattern else 'negative'}">
+                            <p class="{color_class}" style="font-weight: bold; margin-bottom: 5px;">
                                 {pattern}
+                            </p>
+                            <p style="font-size: 0.9em; color: #555;">
+                                {description}
                             </p>
                         </div>
                         """, unsafe_allow_html=True)
                 else:
                     st.markdown("""
                     <div class="pattern-card">
-                        <p class="neutral">No significant patterns detected</p>
+                        <p class="neutral">No significant patterns detected recently.</p>
                     </div>
                     """, unsafe_allow_html=True)
+
                 
-                st.markdown("<h2 class='section-title'>Analysis Summary</h2>", unsafe_allow_html=True)
+               
                 st.markdown("""
                 <style>
                 .summary-card {
@@ -1558,14 +2005,9 @@ def main():
                 """, unsafe_allow_html=True)
 
                 # Split the summary into lines and display as a list
-                summary_lines = result['analysis_summary'].split('\n')
-                st.markdown(f"""
-                <div class="summary-card">
-                    <ul>
-                        {''.join(f"<li>{line.strip()}</li>" for line in summary_lines if line.strip())}
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("<h2 class='section-title'>Analysis Summary</h2>", unsafe_allow_html=True)
+                # The analysis_summary string now contains markdown list formatting and HTML spans
+                st.markdown(result['analysis_summary'], unsafe_allow_html=True)                
             
             with tab3:
                 st.markdown("<h2 class='section-title'>Price Charts</h2>", unsafe_allow_html=True)
