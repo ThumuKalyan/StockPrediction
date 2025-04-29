@@ -12,9 +12,9 @@ import traceback
 # Define your users
 USERS = {
     "kalyan": "Kalyan@2025@",
-    "kishore": "Kishore$2025$",
-    "chaitu": "Chaitu@2025$",
     "somy": "Somy@2025@",
+    "kishore": "Kishore$2025$",
+    "chaitu": "Chaitu@2025$",    
     "guest": "Password!2025#"
 }
 # List of Nifty 200 stocks
@@ -590,9 +590,7 @@ def calculate_target_and_sl(df):
     except Exception as e:
         st.error(f"Error in calculate_target_and_sl: {str(e)}")
         return None
-
-
-    
+   
 def get_news_sentiment(ticker):
     """Get news sentiment for a given stock"""
     try:        
@@ -1479,6 +1477,79 @@ def analyze_stock(ticker):
         print(traceback.format_exc())  # Print the full traceback for debugging     
         return None
 
+def analyze_bullish_list(bullish_stocks):
+    """
+    Analyzes a list of bullish stocks to rank them based on potential
+    for hitting target/SL within a 2-week timeframe.
+    Adds a 'ranking_score' to each stock dictionary.
+    """
+    analyzed_list = []
+
+    for stock in bullish_stocks:
+        # Start with the base strength score (already a good aggregate)
+        ranking_score = stock.get('strength_score', 0)
+
+        # Get relevant data, handle potential None values
+        current_price = stock.get('current_price')
+        target = stock.get('target')
+        stop_loss = stock.get('stop_loss')
+        risk_reward = stock.get('risk_reward')
+        atr = stock.get('atr') # Assuming atr is added to the bullish_stocks dict by scan_bullish_stocks
+        daily_change = stock.get('daily_change') # Assuming daily_change is added
+        sentiment_score = stock.get('sentiment_score') # Assuming sentiment_score is added
+
+        # --- Ranking Logic ---
+        # This is a simplified scoring system. You can adjust weights and criteria
+        # based on your trading strategy and backtesting results.
+
+        # 1. Risk-Reward Ratio (Higher is better)
+        # Add points based on R:R, giving more weight to higher ratios. Cap points.
+        if risk_reward is not None and risk_reward > 1: # Only consider positive R:R
+            ranking_score += min(risk_reward * 3, 10) # Add points based on R:R (e.g., R:R of 3 adds 9 points), cap at 10
+
+        # 2. Proximity to Target/SL relative to ATR (for 2-week timeframe ~ 10 trading days)
+        # We want targets that are achievable within ~10-15 ATRs and SLs that are not too close (< 1 ATR)
+        if current_price is not None and target is not None and stop_loss is not None and atr is not None and atr > 0:
+            distance_to_target = target - current_price
+            distance_to_sl = current_price - stop_loss # This is the risk amount
+
+            # Reward stocks where target is reasonably achievable based on ATR
+            if distance_to_target > 0:
+                target_atr_ratio = distance_to_target / atr
+                # Reward if target is between 0.5 and 15 ATRs away. More points if closer (but not too close).
+                if target_atr_ratio > 0.5 and target_atr_ratio <= 15:
+                    # Inverse relationship: smaller ratio (closer target) gets more points, capped.
+                    ranking_score += min(7, round(10 / target_atr_ratio))
+
+            # Penalize stocks where SL is too close relative to ATR (high chance of being stopped out)
+            if distance_to_sl > 0:
+                 sl_atr_ratio = distance_to_sl / atr
+                 # Penalize if SL is less than 1.5 ATRs away. More penalty if very close.
+                 if sl_atr_ratio < 1.5:
+                     # Inverse relationship: smaller ratio (closer SL) gets more penalty, capped.
+                     # Ensure sl_atr_ratio is not zero or near zero before division
+                     penalty = min(7, round(10 / sl_atr_ratio)) if sl_atr_ratio > 0.1 else 10 # Max penalty if very close
+                     ranking_score -= penalty
+
+        # 3. Recent Momentum (Positive daily change)
+        # Reward stocks that had a positive move on the last day
+        if daily_change is not None and daily_change > 0:
+            ranking_score += min(daily_change * 0.5, 3) # Add points for positive daily change, cap at 3
+
+        # 4. News Sentiment (Positive sentiment adds points)
+        if sentiment_score is not None and sentiment_score > 0.1: # Consider positive sentiment
+             ranking_score += min(sentiment_score * 5, 3) # Add points based on sentiment score (0 to 1 scale), cap at 3
+
+        # Add the calculated ranking score to the stock dictionary
+        stock['ranking_score'] = ranking_score
+        analyzed_list.append(stock)
+
+    # Sort the list by the new ranking score in descending order
+    analyzed_list.sort(key=lambda x: x.get('ranking_score', 0), reverse=True)
+
+    # Return the top 2 stocks
+    return analyzed_list[:2]
+
 def scan_bullish_stocks(stocks_dict):
     """Scan all Nifty 200 stocks and return those with strength score > 66%"""
     bullish_stocks = []
@@ -1508,12 +1579,15 @@ def scan_bullish_stocks(stocks_dict):
                     'strength_score': result['strength_score'],
                     'current_price': result['price'],
                     'daily_change': result['daily_change'],
+                    'daily_change': result['daily_change'],
                     'trade_recommendation': result['trade_recommendation'],
                     'target': result['target'],
                     'stop_loss': result['stop_loss'],
                     'risk_reward': result['risk_reward'],
                     'support_levels': result['support_levels'],
-                    'resistance_levels': result['resistance_levels']
+                    'resistance_levels': result['resistance_levels'],
+                    'atr': result['atr'],
+                    'sentiment_score': result['sentiment_score']
                 })
                 
         except Exception as e:
@@ -1667,6 +1741,7 @@ def main():
        
         # Add buttons for scanning and backtesting
     col1, col2 = st.sidebar.columns(2)
+    bullish_stocks=""
     if col1.button("Scan Bullish Stocks", use_container_width=True):
         # Get Nifty 200 stocks
         nifty_200_stocks = get_nifty_200_stocks()
@@ -1678,7 +1753,26 @@ def main():
             if bullish_stocks:
                 display_bullish_stocks(bullish_stocks)
             else:
-                st.info("No bullish stocks found with strength score > 66%")    
+                st.info("No bullish stocks found with strength score > 66%")  
+
+        st.markdown("---")
+        st.markdown("<h2 class='section-title'>Top 2 Potential Picks for Next 2 Weeks</h2>", unsafe_allow_html=True)
+        with st.spinner("Analyzing bullish list for top picks..."):            
+            top_picks = analyze_bullish_list(bullish_stocks)
+            if top_picks:
+                # Display the top picks in a formatted way
+                for i, stock in enumerate(top_picks):
+                    st.markdown(f"### Pick {i+1}: {stock['stock_name']} ({stock['ticker']})")
+                    st.write(f"  - Strength Score: {stock['strength_score']:.2f}%")
+                    st.write(f"  - Current Price: ₹{stock['current_price']:,}")
+                    st.write(f"  - Target: ₹{stock['target']:,}")
+                    st.write(f"  - Stop Loss: ₹{stock['stop_loss']:,}")
+                    st.write(f"  - Risk-Reward Ratio: {stock['risk_reward']:.2f}")
+                    st.write(f"  - Ranking Score: {stock.get('ranking_score', 'N/A'):.2f}") # Display the new ranking score
+                    st.write("---") # Separator between picks
+            else:
+                st.info("Could not identify top potential picks from the bullish list.") 
+     
     
     # Individual stock analysis section
     st.sidebar.markdown("---")
