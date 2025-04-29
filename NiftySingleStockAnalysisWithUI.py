@@ -269,6 +269,7 @@ def check_password():
 
 def calculate_technical_indicators(df):
     """Calculate various technical indicators"""
+   
     try:
         # Moving Averages
         df['MA20'] = df['Close'].rolling(window=20).mean()
@@ -292,12 +293,22 @@ def calculate_technical_indicators(df):
         df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
         
         # Volume indicators
-        df['Volume_MA20'] = df['Volume'].rolling(window=20).mean()
-        
+        df['Volume_MA20'] = df['Volume'].rolling(window=20).mean() 
+               
+        df['CMF'] = calculate_cmf(df, n=20)  # or n=21 if you prefer
+
         return df
     except Exception as e:
         st.error(f"Error in calculate_technical_indicators: {str(e)}")
         return None
+    
+def calculate_cmf(df, n=20):
+    """Calculate Chaikin Money Flow (CMF)"""
+    mf_multiplier = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'])
+    mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)  # Handle division by zero
+    mf_volume = mf_multiplier * df['Volume']
+    cmf = mf_volume.rolling(window=n).sum() / df['Volume'].rolling(window=n).sum()
+    return cmf
 
 def calculate_rsi(data, periods=14):
     """Calculate RSI using manual calculation"""
@@ -1067,7 +1078,6 @@ def generate_analysis_summary(conditions, patterns, news_data, raw_score, streng
 
     # Join all formatted points into the final summary string, separated by markdown list items
     return "\n".join([f"* {point}" for point in summary_points_formatted])
-
    
 def generate_trade_recommendation(strength_score, conditions, raw_score):
     """Generate a trade recommendation based on the revised strength score and conditions."""
@@ -1088,8 +1098,7 @@ def generate_trade_recommendation(strength_score, conditions, raw_score):
         return "Neutral / Hold"
     else:
         return "Neutral / Weak" # Or "Avoid"
-   
-
+ 
 def get_nifty_200_stocks():
     """Return hardcoded list of Nifty 200 stocks"""   
     print(nifty_200.__len__())
@@ -1105,7 +1114,7 @@ def analyze_stock(ticker):
         # --- Download data ---
         print("Downloading data...")
         # Increased period for better MAs and ATR calculation
-        df = yf.download(ticker, period="2y", interval="1d")
+        df = yf.download(ticker, period="1y", interval="1d")
         if df.empty or len(df) < 200: # Ensure minimum data for MA200
             print(f"Error: Not enough historical data found for {ticker} for meaningful analysis (requires at least 200 days).")
             return None
@@ -1142,6 +1151,7 @@ def analyze_stock(ticker):
 
         # Safely access latest values, providing defaults or checking for NaN later
         current_price = float(latest.get('Close', np.nan))
+        cmf = float(latest.get('CMF', np.nan))
          # --- Calculate Entry and Exit Ranges ---
         entry_range_lower = None
         entry_range_upper = None
@@ -1160,6 +1170,7 @@ def analyze_stock(ticker):
         volume_ma20 = float(latest.get('Volume_MA20', np.nan))
         current_atr = price_levels.get('atr', np.nan)
         risk_reward_ratio = price_levels.get('risk_reward_ratio', 0) # Default R:R to 0 if not calculated
+        cmf = float(latest.get('CMF', np.nan))
 
         # Ensure we have previous day's data for change calculations
         daily_change, volume_change = 0, 0
@@ -1299,6 +1310,10 @@ def analyze_stock(ticker):
             # Volume Conditions
             "Strong Volume": not np.isnan(volume) and not np.isnan(volume_ma20) and volume_ma20 > 0 and volume / volume_ma20 > 1.5, # Check MA > 0
             "Increasing Volume": not np.isnan(volume_change) and volume_change > 20, # Percentage change > 20%
+            
+            # Mondey Flow
+            "Positive CMF": not np.isnan(cmf) and cmf > 0,
+            "Negative CMF": not np.isnan(cmf) and cmf < 0,
 
             # Pattern Conditions (Based on findings from check_candlestick_patterns)
             "Bullish Pattern": any(p in [
@@ -1401,6 +1416,13 @@ def analyze_stock(ticker):
             volume_ratio = volume / volume_ma20
             if volume_ratio > 1.0:
                  raw_score += min(round((volume_ratio - 1.0) * 2), 3) # e.g., 2 points per 1x MA above 1, max 3
+
+        # CMF Points
+        if not np.isnan(cmf):
+            if cmf > 0:  # Positive CMF (accumulation)
+                raw_score += 2
+            elif cmf < 0:  # Negative CMF (distribution)
+                raw_score -= 2
 
         # Pattern Points (Can still keep these fixed or add more nuance)
         if conditions.get("Bullish Pattern"): raw_score += 4
@@ -1513,6 +1535,7 @@ def analyze_stock(ticker):
         result = {
             "ticker": ticker,
             "price": round(current_price, 2) if not np.isnan(current_price) else None,
+            "cmf": round(cmf, 2) if not np.isnan(cmf) else None,  # Include CMF
             # Add the new range values (formatted as strings for display)
             "entry_range": f"₹{entry_range_lower:.2f} - ₹{entry_range_upper:.2f}" if entry_range_lower is not None and entry_range_upper is not None else "N/A",
             "exit_range": f"₹{exit_range_lower:.2f} - ₹{exit_range_upper:.2f}" if exit_range_lower is not None and exit_range_upper is not None else "N/A",
@@ -1692,9 +1715,7 @@ def display_bullish_stocks(bullish_stocks):
         file_name='bullish_stocks.csv',
         mime='text/csv'
     )
-
-   
-
+ 
 def main():
     # Set page configuration
     st.set_page_config(
@@ -1822,6 +1843,26 @@ def main():
                         <p>MACD: {result['macd']:.4f}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                    
+                    # Add CMF here
+                        
+                    if not np.isnan(result['cmf']):
+                        cmf_color = 'green' if result['cmf'] > 0 else 'red'
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <h3>Chaikin Money Flow (CMF)</h3>
+                            <p style="color: {cmf_color};">{result['cmf']:.2f}</p>
+                            <p style="font-size: 0.8em; color: #555;">Indicates buying/selling pressure.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                        <div class="metric-card">
+                            <h3>Chaikin Money Flow (CMF)</h3>
+                            <p>N/A</p>
+                            <p style="font-size: 0.8em; color: #555;">Indicates buying/selling pressure.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 with col3:
                     st.markdown(f"""
                     <div class="metric-card">
@@ -2259,7 +2300,6 @@ def main():
     
     </style>
     """, unsafe_allow_html=True)
-
 
 if __name__ == "__main__":
     main()
