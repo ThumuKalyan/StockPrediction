@@ -1114,7 +1114,7 @@ def analyze_stock(ticker):
         # --- Download data ---
         print("Downloading data...")
         # Increased period for better MAs and ATR calculation
-        df = yf.download(ticker, period="1y", interval="1d")
+        df = yf.download(ticker, period="3y", interval="1d")
         if df.empty or len(df) < 200: # Ensure minimum data for MA200
             print(f"Error: Not enough historical data found for {ticker} for meaningful analysis (requires at least 200 days).")
             return None
